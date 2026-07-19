@@ -8,7 +8,7 @@ on:
       revision:
         description: Release revision for the current upstream version
         required: false
-        default: "1"
+        default: "2"
 
 permissions:
   contents: write
@@ -25,13 +25,13 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-          ref: single-model-selection
+          ref: shared-model-selection
 
       - name: Resolve upstream release
         id: release
         env:
           GH_TOKEN: ${{ github.token }}
-          REVISION: ${{ inputs.revision || '1' }}
+          REVISION: ${{ inputs.revision || '2' }}
         run: |
           upstream_tag="$(gh api repos/anomalyco/opencode/releases/latest --jq .tag_name)"
           release_tag="${upstream_tag}-single-model.${REVISION}"
@@ -86,9 +86,9 @@ jobs:
           RELEASE_TAG: ${{ steps.release.outputs.release_tag }}
           UPSTREAM_TAG: ${{ steps.release.outputs.upstream_tag }}
         run: |
-          git push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:single-model-selection
+          git push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:shared-model-selection
           gh release create "$RELEASE_TAG" release/* \
             --repo "$GITHUB_REPOSITORY" \
-            --target single-model-selection \
+            --target shared-model-selection \
             --title "OpenCode $RELEASE_TAG" \
-            --notes "Patched build of anomalyco/opencode $UPSTREAM_TAG with shared Plan and Build model selection."
+            --notes "Patched build of anomalyco/opencode $UPSTREAM_TAG with opt-in shared Plan and Build model selection."
