@@ -1,0 +1,94 @@
+name: Sync single-model release
+
+on:
+  schedule:
+    - cron: "23 4 * * *"
+  workflow_dispatch:
+    inputs:
+      revision:
+        description: Release revision for the current upstream version
+        required: false
+        default: "1"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-single-model-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3.6.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: single-model-selection
+
+      - name: Resolve upstream release
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REVISION: ${{ inputs.revision || '1' }}
+        run: |
+          upstream_tag="$(gh api repos/anomalyco/opencode/releases/latest --jq .tag_name)"
+          release_tag="${upstream_tag}-single-model.${REVISION}"
+          echo "upstream_tag=$upstream_tag" >> "$GITHUB_OUTPUT"
+          echo "release_tag=$release_tag" >> "$GITHUB_OUTPUT"
+          echo "version=${release_tag#v}" >> "$GITHUB_OUTPUT"
+          if gh release view "$release_tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Merge upstream release
+        if: steps.release.outputs.exists != 'true'
+        env:
+          UPSTREAM_TAG: ${{ steps.release.outputs.upstream_tag }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote add upstream https://github.com/anomalyco/opencode.git
+          git fetch --no-tags upstream "refs/tags/$UPSTREAM_TAG:refs/tags/$UPSTREAM_TAG"
+          git merge --no-edit "$UPSTREAM_TAG"
+
+      - uses: ./.github/actions/setup-bun
+        if: steps.release.outputs.exists != 'true'
+
+      - name: Verify patch
+        if: steps.release.outputs.exists != 'true'
+        run: |
+          bun run --cwd packages/tui test test/context/local.test.ts
+          bun run --cwd packages/tui typecheck
+
+      - name: Build Linux binaries
+        if: steps.release.outputs.exists != 'true'
+        env:
+          OPENCODE_VERSION: ${{ steps.release.outputs.version }}
+        run: bun run packages/opencode/script/build.ts
+
+      - name: Package release
+        if: steps.release.outputs.exists != 'true'
+        run: |
+          mkdir release
+          tar -C packages/opencode/dist/opencode-linux-x64-baseline/bin -czf release/opencode-linux-x64-baseline.tar.gz opencode
+          tar -C packages/opencode/dist/opencode-linux-arm64/bin -czf release/opencode-linux-arm64.tar.gz opencode
+          cd release
+          sha256sum *.tar.gz > checksums.txt
+
+      - name: Publish release
+        if: steps.release.outputs.exists != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.release.outputs.release_tag }}
+          UPSTREAM_TAG: ${{ steps.release.outputs.upstream_tag }}
+        run: |
+          git push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:single-model-selection
+          gh release create "$RELEASE_TAG" release/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --target single-model-selection \
+            --title "OpenCode $RELEASE_TAG" \
+            --notes "Patched build of anomalyco/opencode $UPSTREAM_TAG with shared Plan and Build model selection."
