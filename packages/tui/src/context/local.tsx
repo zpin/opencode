@@ -48,6 +48,17 @@ export function recentModels(
     .map((item) => ({ providerID: item.providerID, modelID: item.modelID }))
 }
 
+export function syncPlanBuildModels<T extends Record<string, { providerID: string; modelID: string }>>(
+  models: T,
+  model: { providerID: string; modelID: string },
+) {
+  return {
+    ...models,
+    plan: model,
+    build: model,
+  }
+}
+
 export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
   name: "Local",
   init: () => {
@@ -283,9 +294,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
           if (next >= recent.length) next = 0
           const val = recent[next]
           if (!val) return
-          const a = agent.current()
-          if (!a) return
-          setModelStore("model", a.name, { ...val })
+          setModelStore("model", (models) => syncPlanBuildModels(models, { ...val }))
         },
         cycleFavorite(direction: 1 | -1) {
           const favorites = modelStore.favorite.filter((item) => isModelValid(item))
@@ -311,9 +320,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
           }
           const next = favorites[index]
           if (!next) return
-          const a = agent.current()
-          if (!a) return
-          setModelStore("model", a.name, { ...next })
+          setModelStore("model", (models) => syncPlanBuildModels(models, { ...next }))
           setModelStore("recent", recentModels(next, modelStore.recent))
           save()
         },
@@ -327,9 +334,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
               })
               return
             }
-            const a = agent.current()
-            if (!a) return
-            setModelStore("model", a.name, model)
+            setModelStore("model", (models) => syncPlanBuildModels(models, model))
             if (options?.recent) {
               setModelStore("recent", recentModels(model, modelStore.recent))
               save()

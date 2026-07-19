@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { parseModel, recentModels } from "../../src/context/local"
+import { parseModel, recentModels, syncPlanBuildModels } from "../../src/context/local"
 
 test("parses model IDs containing slashes", () => {
   expect(parseModel("provider/family/model")).toEqual({
@@ -19,4 +19,24 @@ test("moves a model to the front, deduplicates, and limits recents", () => {
     ...recent.slice(0, 5),
     ...recent.slice(6, 10),
   ])
+})
+
+test("syncs model selection across plan and build", () => {
+  const custom = { providerID: "provider", modelID: "custom" }
+  const selected = { providerID: "provider", modelID: "selected" }
+
+  expect(
+    syncPlanBuildModels(
+      {
+        plan: { providerID: "provider", modelID: "plan" },
+        build: { providerID: "provider", modelID: "build" },
+        custom,
+      },
+      selected,
+    ),
+  ).toEqual({
+    plan: selected,
+    build: selected,
+    custom,
+  })
 })
