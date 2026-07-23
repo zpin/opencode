@@ -26,7 +26,7 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-          ref: shared-model-selection
+          ref: shared-model-release
 
       - name: Resolve upstream release
         id: upstream
@@ -109,9 +109,9 @@ jobs:
           RELEASE_TAG: ${{ steps.release.outputs.release_tag }}
           UPSTREAM_TAG: ${{ steps.upstream.outputs.upstream_tag }}
         run: |
-          git push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:shared-model-selection
+          git push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:shared-model-release
           gh release create "$RELEASE_TAG" release/* \
             --repo "$GITHUB_REPOSITORY" \
-            --target shared-model-selection \
+            --target shared-model-release \
             --title "OpenCode $RELEASE_TAG" \
             --notes "Patched build of anomalyco/opencode $UPSTREAM_TAG with opt-in shared Plan and Build model selection."
