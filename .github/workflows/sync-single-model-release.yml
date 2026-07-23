@@ -4,6 +4,12 @@ on:
   schedule:
     - cron: "23 4 * * *"
   workflow_dispatch:
+    inputs:
+      force:
+        description: Publish a new patched revision for the current upstream release
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -29,6 +35,7 @@ jobs:
         run: |
           upstream_tag="$(gh api repos/anomalyco/opencode/releases/latest --jq .tag_name)"
           echo "upstream_tag=$upstream_tag" >> "$GITHUB_OUTPUT"
+          echo "version=${upstream_tag#v}" >> "$GITHUB_OUTPUT"
 
       - name: Merge upstream release
         env:
@@ -46,11 +53,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           UPSTREAM_TAG: ${{ steps.upstream.outputs.upstream_tag }}
+          FORCE: ${{ inputs.force || false }}
         run: |
           release_tag="$(git tag --points-at HEAD --list "${UPSTREAM_TAG}-single-model.*" --sort=-version:refname | sed -n '1p')"
-          if [ -n "$release_tag" ]; then
+          if [[ -n "$release_tag" && "$FORCE" != "true" ]]; then
             echo "release_tag=$release_tag" >> "$GITHUB_OUTPUT"
-            echo "version=${release_tag#v}" >> "$GITHUB_OUTPUT"
             if gh release view "$release_tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
               echo "exists=true" >> "$GITHUB_OUTPUT"
             else
@@ -69,7 +76,6 @@ jobs:
 
           release_tag="${UPSTREAM_TAG}-single-model.$((revision + 1))"
           echo "release_tag=$release_tag" >> "$GITHUB_OUTPUT"
-          echo "version=${release_tag#v}" >> "$GITHUB_OUTPUT"
           echo "exists=false" >> "$GITHUB_OUTPUT"
 
       - uses: ./.github/actions/setup-bun
@@ -84,7 +90,7 @@ jobs:
       - name: Build Linux binaries
         if: steps.release.outputs.exists != 'true'
         env:
-          OPENCODE_VERSION: ${{ steps.release.outputs.version }}
+          OPENCODE_VERSION: ${{ steps.upstream.outputs.version }}
         run: bun run packages/opencode/script/build.ts
 
       - name: Package release
