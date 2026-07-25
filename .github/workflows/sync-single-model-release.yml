@@ -37,7 +37,7 @@ jobs:
           echo "upstream_tag=$upstream_tag" >> "$GITHUB_OUTPUT"
           echo "version=${upstream_tag#v}" >> "$GITHUB_OUTPUT"
 
-      - name: Merge upstream release
+      - name: Apply patch to upstream release
         env:
           UPSTREAM_TAG: ${{ steps.upstream.outputs.upstream_tag }}
         run: |
@@ -46,7 +46,11 @@ jobs:
           git remote add upstream https://github.com/anomalyco/opencode.git
           git fetch --tags origin
           git fetch --no-tags upstream "refs/tags/$UPSTREAM_TAG:refs/tags/$UPSTREAM_TAG"
-          git merge --no-edit "$UPSTREAM_TAG"
+          git fetch origin shared-model-selection
+
+          # Start from a clean upstream tag, then apply our customization
+          git checkout "$UPSTREAM_TAG"
+          git cherry-pick --no-edit origin/shared-model-selection
 
       - name: Resolve patched release
         id: release
@@ -55,10 +59,11 @@ jobs:
           UPSTREAM_TAG: ${{ steps.upstream.outputs.upstream_tag }}
           FORCE: ${{ inputs.force || false }}
         run: |
-          release_tag="$(git tag --points-at HEAD --list "${UPSTREAM_TAG}-single-model.*" --sort=-version:refname | sed -n '1p')"
-          if [[ -n "$release_tag" && "$FORCE" != "true" ]]; then
-            echo "release_tag=$release_tag" >> "$GITHUB_OUTPUT"
-            if gh release view "$release_tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+          # Find the latest existing tag for this upstream release
+          latest_tag="$(git tag --list "${UPSTREAM_TAG}-single-model.*" --sort=-version:refname | sed -n '1p')"
+          if [[ -n "$latest_tag" && "$FORCE" != "true" ]]; then
+            echo "release_tag=$latest_tag" >> "$GITHUB_OUTPUT"
+            if gh release view "$latest_tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
               echo "exists=true" >> "$GITHUB_OUTPUT"
             else
               echo "exists=false" >> "$GITHUB_OUTPUT"
@@ -109,7 +114,8 @@ jobs:
           RELEASE_TAG: ${{ steps.release.outputs.release_tag }}
           UPSTREAM_TAG: ${{ steps.upstream.outputs.upstream_tag }}
         run: |
-          git push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:shared-model-release
+          git tag "$RELEASE_TAG"
+          git push --force "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:shared-model-release "$RELEASE_TAG"
           gh release create "$RELEASE_TAG" release/* \
             --repo "$GITHUB_REPOSITORY" \
             --target shared-model-release \
