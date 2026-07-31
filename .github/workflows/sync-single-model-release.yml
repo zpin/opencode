@@ -48,8 +48,14 @@ jobs:
           git fetch --no-tags upstream "refs/tags/$UPSTREAM_TAG:refs/tags/$UPSTREAM_TAG"
           git fetch origin shared-model-selection
 
-          # Start from a clean upstream tag, then apply our customization
+          # Start from a clean upstream tag, remove workflows from the release branch, then apply our customization.
           git checkout "$UPSTREAM_TAG"
+          shopt -s nullglob
+          workflow_files=(.github/workflows/*.yml .github/workflows/*.yaml)
+          if (( ${#workflow_files[@]} )); then
+            git rm -f "${workflow_files[@]}"
+            git commit -m "Remove upstream workflows from patched release"
+          fi
           git cherry-pick --no-edit origin/shared-model-selection
 
       - name: Resolve patched release
